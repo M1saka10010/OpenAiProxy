@@ -1,0 +1,12 @@
+version: '3.3'
+services:
+  openai-proxy:
+    container_name: openai-proxy
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      -  "9090:80"
+    volumes:
+      - ./:/app
+    restart: unless-stopped
