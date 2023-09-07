@@ -115,6 +115,13 @@ def pool_refresh():
     return 'ok'
 
 
+@app.route('/', methods=['GET'])
+def index():
+    # 读取index.html并返回
+    with open('index.html', 'r', encoding='utf-8') as f:
+        return f.read()
+
+
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=update_key, trigger="interval", hours=48)
 scheduler.start()
