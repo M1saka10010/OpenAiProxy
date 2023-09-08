@@ -1,4 +1,5 @@
 import configparser
+from time import sleep
 
 import requests
 
@@ -39,10 +40,25 @@ def get_token(account):
             access_tokens.append(access_token)
         else:
             print(r.status_code)
+        sleep(20)
     return access_tokens
 
 
-def update_key():
+def update_key(mode):
+    if mode == 1:
+        # 先读取accessToken.txt文件中的内容
+        access_tokens = None
+        try:
+            with open('accessToken.txt', 'r') as f:
+                access_tokens = f.read()
+            access_tokens = access_tokens.split(',')
+            # 去除空token
+            access_tokens = list(filter(None, access_tokens))
+        except Exception as e:
+            print(e)
+        if access_tokens is not None:
+            return access_tokens
+
     access_tokens = get_token(get_account())
     if access_tokens is None:
         return None
@@ -53,4 +69,4 @@ def update_key():
 
 
 if __name__ == '__main__':
-    update_key()
+    update_key(0)

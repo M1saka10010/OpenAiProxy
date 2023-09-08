@@ -26,8 +26,8 @@ if not config.getboolean('settings', 'debug'):
 access_token_queue = Queue()
 
 
-def update_key():
-    access_tokens = updateKey.update_key()
+def update_key(mode=0):
+    access_tokens = updateKey.update_key(mode)
     if access_tokens is None:
         return None
     global access_token_queue
@@ -38,7 +38,7 @@ def update_key():
         access_token_queue.put(access_token)
 
 
-update_key()
+update_key(1)
 
 
 def push_access_token(access_token):
@@ -83,11 +83,12 @@ def get_access_token(func):
 def reverse_proxy(access_token):
     url_base = config.get('server', 'url_base')
     # 获取api_key
-    api_key = 'Bearer ' + config.get('server', 'api_key')
+    api_key = config.get('server', 'api_key')
     # 鉴权
     token = request.headers.get('Authorization')
     if token != api_key:
-        return Response(status=401)
+        if token != 'Bearer ' + api_key:
+            return Response(status=401)
 
     url = url_base + '/imitate/v1/chat/completions'  # 反向代理的目标 URL
 
@@ -127,5 +128,5 @@ scheduler.add_job(func=update_key, trigger="interval", hours=48)
 scheduler.start()
 
 if __name__ == '__main__':
-    update_key()
+    update_key(1)
     app.run(debug=True)
