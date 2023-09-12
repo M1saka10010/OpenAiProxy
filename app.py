@@ -4,12 +4,17 @@ from threading import Thread
 from gevent import sleep
 
 import requests
+from flask_apscheduler import APScheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, Response, stream_with_context, request
 
 import updateKey
 
 app = Flask(__name__)
+app.config['SCHEDULER_API_ENABLED'] = True
+scheduler = APScheduler(BackgroundScheduler(timezone="Asia/Shanghai"))
+scheduler.init_app(app)
+scheduler.start()
 
 # 读取配置文件
 config = configparser.ConfigParser()
@@ -21,6 +26,7 @@ except Exception as e:
     exit(-1)
 if not config.getboolean('settings', 'debug'):
     import warnings
+
     warnings.filterwarnings("ignore")
 # 用于存储访问令牌的队列
 access_token_queue = Queue()
@@ -123,9 +129,8 @@ def index():
         return f.read()
 
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=update_key, trigger="interval", hours=48)
-scheduler.start()
+# 每周二自动运行update_key
+scheduler.add_job(func=update_key, id="update_key", trigger="cron", day_of_week="tue", hour=4, minute=0, args=(0,))
 
 if __name__ == '__main__':
     update_key(1)
