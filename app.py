@@ -1,12 +1,13 @@
 import configparser
+import logging
 from queue import Queue
 from threading import Thread
-from gevent import sleep
 
 import requests
-from flask_apscheduler import APScheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, Response, stream_with_context, request
+from flask_apscheduler import APScheduler
+from gevent import sleep
 
 import updateKey
 
@@ -22,6 +23,7 @@ config = configparser.ConfigParser()
 try:
     config.read('config.ini')
 except Exception as e:
+    app.logger.error(e)
     print(e)
     exit(-1)
 if not config.getboolean('settings', 'debug'):
@@ -30,9 +32,14 @@ if not config.getboolean('settings', 'debug'):
     warnings.filterwarnings("ignore")
 # 用于存储访问令牌的队列
 access_token_queue = Queue()
+is_refreshing = False
 
 
 def update_key(mode=0):
+    global is_refreshing
+    if is_refreshing:
+        return None
+    is_refreshing = True
     access_tokens = updateKey.update_key(mode)
     if access_tokens is None:
         return None
@@ -42,6 +49,7 @@ def update_key(mode=0):
         access_token_queue.get()
     for access_token in access_tokens:
         access_token_queue.put(access_token)
+    is_refreshing = False
 
 
 update_key(1)
@@ -52,9 +60,10 @@ def push_access_token(access_token):
     wait_time = config.getint('settings', 'wait_time')
     # 检查访问令牌是否可用
     url_base = config.get('server', 'url_base')
-    url_check = url_base + '/chatgpt/backend-api/accounts/check'
+    url_base = url_base.split(',')
+    url_check = url_base[access_token[1]] + '/chatgpt/backend-api/accounts/check'
     headers = {
-        'Authorization': f'Bearer {access_token}'
+        'Authorization': f'Bearer {access_token[0]}'
     }
     sleep(wait_time)
     r = requests.get(url_check, headers=headers)
@@ -88,6 +97,7 @@ def get_access_token(func):
 @get_access_token
 def reverse_proxy(access_token):
     url_base = config.get('server', 'url_base')
+    url_base = url_base.split(',')
     # 获取api_key
     api_key = config.get('server', 'api_key')
     # 鉴权
@@ -96,15 +106,17 @@ def reverse_proxy(access_token):
         if token != 'Bearer ' + api_key:
             return Response(status=401)
 
-    url = url_base + '/imitate/v1/chat/completions'  # 反向代理的目标 URL
+    url = []
+    for base in url_base:
+        url.append(f'{base}/imitate/v1/chat/completions')
 
     # 构建请求头
     headers = {
-        'Authorization': f'Bearer {access_token}'
+        'Authorization': f'Bearer {access_token[0]}'
     }
 
     # 构建请求
-    r = requests.request(request.method, url, headers=headers, data=request.data, stream=True)
+    r = requests.request(request.method, url[access_token[1]], headers=headers, data=request.data, stream=True)
     response = Response(stream_with_context(r.iter_content(chunk_size=1024)))
     response.headers['content-type'] = r.headers.get('content-type')
     return response
@@ -118,7 +130,14 @@ def pool_count():
 
 @app.route('/pool/refresh', methods=['GET'])
 def pool_refresh():
-    update_key()
+    global is_refreshing
+    if is_refreshing:
+        return 'refreshing'
+    try:
+        Thread(target=update_key, args=(0,)).start()
+    except Exception as err:
+        app.logger.error(err)
+        return 'error'
     return 'ok'
 
 
@@ -131,6 +150,11 @@ def index():
 
 # 每周二自动运行update_key
 scheduler.add_job(func=update_key, id="update_key", trigger="cron", day_of_week="tue", hour=4, minute=0, args=(0,))
+
+if __name__ != '__main__':
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
 
 if __name__ == '__main__':
     update_key(1)
