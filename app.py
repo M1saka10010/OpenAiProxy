@@ -116,7 +116,7 @@ def reverse_proxy(access_token):
     }
 
     # 构建请求
-    r = requests.request(request.method, url[access_token[1]], headers=headers, data=request.data, stream=True)
+    r = requests.request(request.method, url[int(access_token[1])], headers=headers, data=request.data, stream=True)
     response = Response(stream_with_context(r.iter_content(chunk_size=1024)))
     response.headers['content-type'] = r.headers.get('content-type')
     return response
